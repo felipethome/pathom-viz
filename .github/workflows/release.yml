@@ -1,0 +1,48 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build/release
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v2
+
+      - uses: DeLaGuardo/setup-clojure@master
+        with:
+          tools-deps: '1.10.1.469'
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12
+
+      - name: NPM Install
+        run: npm install
+
+      - name: Build JS
+        run: ./scripts/build-electron
+
+      - name: Electron Builder Action
+        uses: samuelmeuli/action-electron-builder@v1.6.0
+        with:
+          # GitHub authentication token
+          github_token: ${{ secrets.github_token }}
+          # Whether the app should be released after a successful build
+          release: true
+          # Directory where NPM/Yarn commands should be run
+          package_root: shells/electron
+          app_root: shells/electron
+          skip_build: true

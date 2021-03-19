@@ -1,12 +1,19 @@
 (ns com.wsscode.pathom.viz.ui.kit
-  (:require [fulcro.client.primitives :as fp]
-            [fulcro.client.localized-dom :as dom]
-            [fulcro-css.css :as css]
+  (:require ["react-draggable" :refer [DraggableCore]]
+            [cljs.spec.alpha :as s]
+            [com.fulcrologic.fulcro-css.css :as css]
+            [com.fulcrologic.fulcro-css.localized-dom :as dom]
+            [com.fulcrologic.fulcro.components :as fc]
+            [com.fulcrologic.fulcro.dom :as domc]
+            [com.fulcrologic.fulcro.mutations :as fm]
+            [com.fulcrologic.guardrails.core :refer [>def >defn >fdef => | <- ?]]
+            [com.wsscode.pathom.misc :as p.misc]
+            [com.wsscode.pathom.viz.helpers :as h]
+            [helix.core :as hx]
             [goog.object :as gobj]
             [goog.string :as gstr]
-            [com.fulcrologic.guardrails.core :refer [>def >defn >fdef => | <- ?]]
-            [cljs.spec.alpha :as s]
-            [fulcro.client.dom :as domc]))
+            [garden.selectors :as gs]
+            [clojure.set :as set]))
 
 (declare gc css ccss)
 
@@ -18,9 +25,16 @@
 (def text-base {:font-family font-base
                 :line-height "1.5"})
 
+(def text-sans-13
+  {:font-family "sans-serif"
+   :font-size   "13px"})
+
+(def text-sans-13'
+  ["font-sans" "text-sm"])
+
 (def css-header
-  {:margin "0"
-   :font-size "2rem"
+  {:margin      "0"
+   :font-size   "2rem"
    :font-weight "600"})
 
 (def no-user-select
@@ -30,13 +44,37 @@
    :-ms-user-select       "none"
    :user-select           "none"})
 
+(def color-highlight "#9fdcff")
+
 ; endregion
 
 ; region helpers
 
+(defn normalize-props [props classes]
+  (update props :classes #(into classes %)))
+
+(defn styled-component [component classes]
+  (fn styled-component-internal
+    ([props]
+     (component (normalize-props props classes)))
+    ([props child]
+     (component (normalize-props props classes) child))
+    ([props c1 c2]
+     (component (normalize-props props classes) c1 c2))
+    ([props c1 c2 c3]
+     (component (normalize-props props classes) c1 c2 c3))
+    ([props c1 c2 c3 c4]
+     (component (normalize-props props classes) c1 c2 c3 c4))
+    ([props c1 c2 c3 c4 & children]
+     (apply component (normalize-props props classes) c1 c2 c3 c4 children))))
+
+(defn add-class [props class]
+  (update props :classes p.misc/vconj class))
+
 (def mergers
   {:classes (fn [a b]
-              (into a b))})
+              (into a b))
+   :class   (fn [a b] (str a " " b))})
 
 (s/def ::merger-map (s/map-of keyword? fn?))
 
@@ -65,43 +103,73 @@
   [any? => string?]
   (gobj/getValueByKeys e "target" "value"))
 
+(defn prevent-default
+  "Wrap a callback function f to prevent default event behavior."
+  [f]
+  (fn [e]
+    (.preventDefault e)
+    (f e)))
+
+(defn stop-propagation
+  "Wrap a callback function f to prevent default event behavior."
+  [f]
+  (fn [e]
+    (.stopPropagation e)
+    (f e)))
+
 ; endregion
 
 ; region basics
 
-(fp/defsc Button
-  [this props]
-  {:css [[:.button {:cursor  "pointer"
-                    :padding "1px 7px 2px"}
-          [:&:disabled {:cursor "default"}]]]}
-  (dom/button :.button props (fp/children this)))
+(def button
+  (styled-component domc/button
+    ["text-xs text-white font-semibold"
+     "bg-gray-700 rounded px-2 py-1"
+     ; hover
+     "hover:bg-gray-500"
+     "focus:outline-none focus:ring"
+     "disabled:opacity-50 disabled:cursor-not-allowed"]))
 
-(def button (fp/factory Button))
+#_
+(defn button [props & children]
+  (apply dom/button (dom-props {:classes [""]} props) children))
 
-(fp/defsc Column
+(fc/defsc Column
   [this props]
   {:css [[:.container {:display        "flex"
                        :flex-direction "column"
-                       :max-height     "100%"}]]}
+                       :max-width      "100%"
+                       :height         "100%"
+                       :overflow       "hidden"}]
+         [(gs/> :.container "*") {:min-height "10px"}]]}
   (dom/div :.container props
-    (fp/children this)))
+    (fc/children this)))
 
-(def column (fp/factory Column))
+(def column (fc/factory Column))
 
-(fp/defsc Row
+(fc/defsc Row
   [this props]
   {:css [[:.container {:display   "flex"
-                       :max-width "100%"}]
-         [:.center {:align-items "center"}]]}
-  (dom/div :.container props (fp/children this)))
+                       :max-width "100%"
+                       :overflow  "hidden"}]
+         [(gs/> :.container "*") {:min-width "10px"}]
+         #_[:* {:min-width "10px"}]
+         [:.center {:align-items "center"}]
+         [:.stretch {:align-items "stretch"}]]}
+  (dom/div :.container props (fc/children this)))
 
-(def row (fp/factory Row))
+(def row (fc/factory Row))
+
+(def link
+  (styled-component domc/a
+    ["text-blue-600"
+     "hover:underline"]))
 
 ; endregion
 
 ; region components
 
-(fp/defsc Tag
+(fc/defsc Tag
   [this props]
   {:css [[:.tag {:align-items      "center"
                  :background-color "#f5f5f5"
@@ -124,15 +192,15 @@
             :color            "#fff"}]
           [:&.is-link
            {:background-color "#3273dc"
-            :color "#fff"}]
+            :color            "#fff"}]
           [:&.is-dark
            {:background-color "#363636"
             :color            "#f5f5f5"}]]]}
-  (dom/span :.tag (dom-props props) (fp/children this)))
+  (dom/span :.tag (dom-props props) (fc/children this)))
 
-(def tag (fp/factory Tag))
+(def tag (fc/factory Tag))
 
-(fp/defsc PanelBlock
+(fc/defsc PanelBlock
   [this {::keys [scrollbars?]
          :or    {scrollbars? false}
          :as    props}]
@@ -152,17 +220,17 @@
   (dom/div :.panel-block (dom-props props)
     (if scrollbars?
       (dom/div (gc :.scrollbars)
-        (fp/children this))
-      (fp/children this))))
+        (fc/children this))
+      (fc/children this))))
 
-(def panel-block (fp/factory PanelBlock))
+(def panel-block (fc/factory PanelBlock))
 
 (s/def ::panel-title string?)
 (s/def ::panel-tag (s/or :string string? :number number?))
 (s/def ::scrollbars? boolean?)
 (s/def ::block-wrap? boolean?)
 
-(fp/defsc Panel
+(fc/defsc Panel
   [this {::keys [panel-title panel-tag scrollbars? block-wrap?]
          :or    {scrollbars? true
                  block-wrap? true}
@@ -201,17 +269,17 @@
       (panel-block props
         (if scrollbars?
           (dom/div (gc :.scrollbars)
-            (fp/children this))
-          (fp/children this)))
-      (fp/children this))))
+            (fc/children this))
+          (fc/children this)))
+      (fc/children this))))
 
-(def panel (fp/factory Panel))
+(def panel (fc/factory Panel))
 
 (s/def ::title string?)
 (s/def ::collapsed? boolean?)
 (s/def ::on-toggle (s/fspec :args (s/cat :active? boolean?)))
 
-(fp/defsc CollapsibleBox
+(fc/defsc CollapsibleBox
   [this {::keys [collapsed? on-toggle title]
          :or    {on-toggle identity}
          :as    p}]
@@ -228,11 +296,27 @@
       (dom/div :.arrow (if collapsed? "▶" "▼"))
       (dom/div (gc :.flex) title))
     (apply dom/div {:style {:display (if collapsed? "none")}}
-      (fp/children this))))
+      (fc/children this))))
 
-(def collapsible-box (fp/factory CollapsibleBox))
+(def collapsible-box (fc/factory CollapsibleBox))
 
-(fp/defsc RawCollapsible
+(fc/defsc SectionHeader
+  [this props]
+  {:css [[:.container {:background    "#f7f7f7"
+                       :border-bottom "1px solid #ddd"
+                       :padding       "4px 8px"}
+          text-sans-13]]}
+  (dom/div :.container (dom-props props) (fc/children this)))
+
+(defn section-header [props & children]
+  (apply dom/div
+    (dom-props {:className "py-1 px-2 border-b border-gray-300 bg-gray-100 font-sans text-sm"}
+      props)
+    children))
+
+#_ (def section-header (fc/factory SectionHeader))
+
+(fc/defsc RawCollapsible
   [this {::keys [collapsed? on-toggle title]
          :or    {on-toggle identity}
          :as    p}]
@@ -244,11 +328,52 @@
       (dom/div :.arrow {:onClick #(on-toggle (not collapsed?))} (if collapsed? "▶" "▼"))
       title)
     (apply dom/div {:style {:display (if collapsed? "none")}}
-      (fp/children this))))
+      (fc/children this))))
 
-(def raw-collapsible (fp/factory RawCollapsible))
+(def raw-collapsible (fc/factory RawCollapsible))
 
-(fp/defsc TextField
+(fc/defsc Modal
+  [this {::keys []}]
+  {:css        [[:.outer-container
+                 {:background      "rgba(0,0,0,0.6)"
+                  :position        "fixed"
+                  :left            "0"
+                  :top             "0"
+                  :right           "0"
+                  :bottom          "0"
+                  :display         "flex"
+                  :align-items     "center"
+                  :justify-content "center"
+                  :z-index         "10"}]
+                [:.container {:background "#fff"
+                              :border     "1px solid #ddd"
+                              :padding    "10px"}]]
+   :use-hooks? true}
+  (dom/div :.outer-container
+    (dom/div :.container
+      (fc/children this))))
+
+(def modal (fc/factory Modal {}))
+
+(defn input [{:keys [state] :as props}]
+  (let [props (dissoc props :state)]
+    (dom/input :$border$rounded$w-full (assoc props :value @state :onChange #(reset! state (event-value %))))))
+
+(fc/defsc PromptModal
+  [this {:keys [prompt value on-finish]}]
+  {:use-hooks? true}
+  (let [text (h/use-atom-state (or value ""))]
+    (modal {}
+      (dom/div :$space-y-2
+        (dom/div (str prompt))
+        (dom/div (input {:state text}))
+        (dom/div :$space-x-1
+          (button {:onClick #(on-finish @text)} "Ok")
+          (button {:onClick #(on-finish nil)} "Cancel"))))))
+
+(def prompt-modal (fc/factory PromptModal))
+
+(fc/defsc TextField
   [this {:keys  [value]
          ::keys [on-clear left-icon]
          :as    props}]
@@ -395,9 +520,71 @@
         (dom/span :.icon.is-small.is-right {:onClick #(on-clear % this)}
           (dom/a :.delete.is-small))))))
 
-(def text-field (fp/factory TextField))
+(def text-field (fc/factory TextField))
 
-(fp/defsc NumberInput
+(fc/defsc TabContainer
+  [this props]
+  {:css [[:.container {:display        "flex"
+                       :flex           "1"
+                       :flex-direction "column"
+                       :max-width      "100%"
+                       :max-height     "100%"
+                       :overflow       "hidden"}]]}
+  (dom/div :.container props (fc/children this)))
+
+(def tab-container (fc/factory TabContainer))
+
+(>def ::active-tab-id any?)
+(>def ::tab-id any?)
+(>def ::on-tab-close fn?)
+
+(fc/defsc TabNav
+  [this {::keys [active-tab-id target tab-right-tools] :as props}]
+  {:css [[:.container {:align-items   "baseline"
+                       :background    "#eee"
+                       :border        "1px solid #ddd"
+                       :display       "flex"
+                       :margin-bottom "-1px"
+                       :padding-right "4px"}
+          [:&.border-collapse-bottom {:border-bottom "none"}]]
+         [:.tab {:align-items   "center"
+                 :border-bottom "2px solid transparent"
+                 :cursor        "pointer"
+                 :display       "flex"
+                 :padding       "5px 9px"}
+          text-sans-13
+          [:&:hover {:background "#e5e5e5"}]]
+         [:.tab-active {:border-bottom "2px solid #5c7ebb"
+                        :z-index       "1"}]
+         [:.x {:align-self    "flex-start"
+               :border-radius "50%"
+               :margin-left   "6px"
+               :font-family   "monospace"
+               :font-size     "10px"
+               :padding       "1px 4px"}
+          [:&:hover {:background "#aaa"}]]]}
+  (dom/div :.container props
+    (for [[{::keys [tab-id on-tab-close] :as p} & c] (fc/children this)
+          :let [active? (= tab-id active-tab-id)]]
+      (dom/div :.tab
+        (cond-> (-> p
+                    h/keep-unamespaced
+                    (assoc :key (pr-str tab-id)))
+          target (assoc :onClick #(fm/set-value! target ::active-tab-id tab-id))
+          active? (add-class :.tab-active))
+        (if on-tab-close
+          (fc/fragment
+            c
+            (dom/div :.x {:onClick (stop-propagation on-tab-close)} "✕"))
+          c)))
+    (if tab-right-tools
+      (fc/fragment
+        (dom/div (gc :.flex))
+        tab-right-tools))))
+
+(def tab-nav (fc/factory TabNav))
+
+(fc/defsc NumberInput
   [this p]
   {:css            [[:.container {:display     "inline-flex"
                                   :align-items "center"
@@ -413,26 +600,53 @@
                               :width      "20px"}
                      ["&::-webkit-inner-spin-button" {:-webkit-appearance "none"}]]]
 
-   :initLocalState (fn [] {:decrease #(let [{:keys [min value onChange]} (fp/props this)]
-                                        (onChange (js/Event. "") (cond-> value (> value (or min (- js/Infinity))) dec)))
-                           :increase #(let [{:keys [max value onChange]} (fp/props this)]
-                                        (onChange (js/Event. "") (cond-> value (< value (or max js/Infinity)) inc)))})}
+   :initLocalState (fn [this]
+                     {:decrease #(let [{:keys [min value onChange]} (fc/props this)]
+                                   (onChange (js/Event. "") (cond-> value (> value (or min (- js/Infinity))) dec)))
+                      :increase #(let [{:keys [max value onChange]} (fc/props this)]
+                                   (onChange (js/Event. "") (cond-> value (< value (or max js/Infinity)) inc)))})}
   (let [p (update p :onChange
             (fn [onChange]
               (if onChange
                 (fn [e]
                   (onChange e (-> e event-value gstr/parseInt))))))]
     (dom/div :.container
-      (dom/div :.arrow {:onClick (fp/get-state this :decrease)} "<")
+      (dom/div :.arrow {:onClick (fc/get-state this :decrease)} "<")
       (with-redefs [domc/form-elements? #{}]
         (dom/input :.input (merge {:type "number"} (dom-props p))))
-      (dom/div :.arrow {:onClick (fp/get-state this :increase)} ">"))))
+      (dom/div :.arrow {:onClick (fc/get-state this :increase)} ">"))))
 
-(def number-input (fp/factory NumberInput))
+(def number-input (fc/factory NumberInput))
+
+(def native-select
+  (styled-component domc/select
+    ["block pl-2 pr-6 py-0.5 text-sm border-gray-300 rounded-md"
+     "focus:outline-none focus:border-gray-500 bg-none"]))
+
+(defn dom-select
+  "Similar to fulcro dom/select, but does value encode/decode in EDN so you can use
+  EDN values directly."
+  [props & children]
+  (apply native-select
+    (-> props
+        (update :value pr-str)
+        (update :onChange (fn [f]
+                            (fn [e]
+                              (f e (h/safe-read (.. e -target -value)))))))
+    children))
+
+(defn dom-option
+  "Similar to fulcro dom/option, but does value encode/decode in EDN so you can use
+  EDN values directly."
+  [props & children]
+  (apply dom/option
+    (-> props
+        (update :value pr-str))
+    children))
 
 (s/def ::active? boolean?)
 
-(fp/defsc ToggleAction
+(fc/defsc ToggleAction
   [this {::keys [active?] :as p}]
   {:css [[:.container {:background  "#f5f5f5"
                        :display     "inline-block"
@@ -441,28 +655,158 @@
                        :padding     "0 8px"}]
          [:.active {:background "#e0e0e0"}]]}
   (dom/div :.container (dom-props {:classes [(if active? :.active)]} p)
-    (fp/children this)))
+    (fc/children this)))
 
-(def toggle-action (fp/factory ToggleAction))
+(def toggle-action (fc/factory ToggleAction))
+
+(fc/defsc Toolbar
+  [this props]
+  {:css [[:.container {:background    "#eeeeee"
+                       :border-bottom "1px solid #e0e0e0"
+                       :padding       "5px 4px"
+                       :display       "flex"
+                       :align-items   "center"
+                       :font-family   "sans-serif"
+                       :font-size     "13px"}
+          [:label {:display     "flex"
+                   :align-items "center"}
+           [:input {:margin-right "5px"}]]]]}
+  (apply dom/div :.container props (fc/children this)))
+
+(def toolbar (fc/factory Toolbar))
+
+(>def ::direction #{"up" "down" "left" "right"})
+
+(hx/defnc DragResizeHelix [{:keys [state direction props react-key kids]}]
+  (let [start      (h/use-atom-state nil)
+        start-size (h/use-atom-state nil)
+        axis       (get {"left"  "x"
+                         "right" "x"
+                         "up"    "y"
+                         "down"  "y"} direction "x")
+        invert?    (get {"left"  true
+                         "right" false
+                         "up"    true
+                         "down"  false} direction true)
+        css        (if (= "x" axis) {:cursor        "ew-resize"
+                                     :width         "20px"
+                                     :background    "#eee"
+                                     :border        "1px solid #e0e0e0"
+                                     :borderTop     "0"
+                                     :borderBottom  "0"
+                                     :pointerEvents "all"
+                                     :zIndex        "2"}
+                                    {:cursor        "ns-resize"
+                                     :minHeight     "20px"
+                                     :background    "#eee"
+                                     :border        "1px solid #e0e0e0"
+                                     :borderLeft    "0"
+                                     :borderRight   "0"
+                                     :pointerEvents "all"
+                                     :padding       "4px 8px"
+                                     :zIndex        "2"})]
+    (js/React.createElement DraggableCore
+      #js {:key     (or react-key "dragHandler")
+           :onStart (fn [e dd]
+                      (reset! start (gobj/get dd axis))
+                      (reset! start-size @state))
+           :onDrag  (fn [e dd]
+                      (let [start    @start
+                            size     @start-size
+                            value    (gobj/get dd axis)
+                            new-size (+ size (if invert? (- value start) (- start value)))]
+                        (reset! state new-size)))}
+      (apply dom/div (merge {:classes   (into text-sans-13' ["flex-shrink-0"])
+                             :style     css} props) kids))))
+
+(defn drag-resize
+  "Creates a visual component that can be dragged to control the size of another component.
+
+  The :state prop should be an `atom-like` state and will reflect the current size.
+
+  The :direction can be up, down, left or right, think about it as what is the position
+  of the element being resized, relative to the drag handler (which is this component).
+
+  Row example:
+    -------------------------
+    | DIV1 | HANDLER | DIV2 |
+    -------------------------
+
+  In the row setting in the example before, if you want the size to apply into DIV1, use
+  the \"left\" direction. For DIV2 use \"right\".
+
+  Column example:
+    -----------
+    | DIV1    |
+    -----------
+    | HANDLER |
+    -----------
+    | DIV2    |
+    -----------
+
+  In this column example, use \"up\" if you want to control the DIV1, and \"down\" if
+  you want to control the size of DIV2.
+  "
+  [props & children]
+  (let [props (set/rename-keys props {:key :react-key})]
+    (hx/$ DragResizeHelix {:kids children :& props})))
 
 ; endregion
 
-(fp/defsc UIKit [_ _]
-  {:css         [[:.flex {:flex "1"}]
+(fc/defsc UIKit [_ _]
+  {:css         [[:$CodeMirror {:height   "100% !important"
+                                :width    "100% !important"
+                                :position "absolute !important"
+                                :z-index  "1"}
+                  [:$cm-atom-composite {:color "#ab890d"}]
+                  [:$cm-atom-ident {:color       "#219"
+                                    :font-weight "bold"}]]
+                 [:$CodeMirror-hint {:font-size "10px"}]
+                 [:.flex {:flex "1"}]
+                 [:.center {:text-align "center"}]
                  [:.scrollbars {:overflow "auto"}]
                  [:.no-scrollbars {:overflow "hidden"}]
-                 [:.nowrap {:white-space "nowrap"}]]
-   :css-include [Button
-                 CollapsibleBox
+                 [:.nowrap {:white-space "nowrap"}]
+                 [:.height-100 {:height "100%"}]
+                 [:.max-width-100 {:max-width "100%"}]
+                 [:.border-collapse-top {:border-top "none !important"}]
+                 [:.border-collapse-right {:border-right "none !important"}]
+                 [:.border-collapse-bottom {:border-bottom "none !important"}]
+                 [:.border-collapse-left {:border-left "none !important"}]
+                 []
+                 [:.divisor-v {:cursor         "ew-resize"
+                               :width          "20px"
+                               :background     "#eee"
+                               :border         "1px solid #e0e0e0"
+                               :border-top     "0"
+                               :border-bottom  "0"
+                               :pointer-events "all"
+                               :z-index        "2"}]
+                 [:.divisor-h {:cursor         "ns-resize"
+                               :height         "20px"
+                               :background     "#eee"
+                               :border         "1px solid #e0e0e0"
+                               :border-left    "0"
+                               :border-right   "0"
+                               :pointer-events "all"
+                               :padding        "4px 8px"
+                               :z-index        "2"}
+                  text-sans-13]]
+   :css-include [CollapsibleBox
                  Column
+                 Modal
                  NumberInput
                  Panel
                  PanelBlock
                  RawCollapsible
                  Row
+                 SectionHeader
+                 TabContainer
+                 TabNav
                  Tag
                  TextField
-                 ToggleAction]})
+                 ToggleAction
+                 Toolbar]})
 
 (def ui-css (css/get-classnames UIKit))
 
@@ -478,16 +822,16 @@
 
 (defn gc
   "Return a map pointing to the given global classes.
-  Eg: (kc :.flex :.scrollbars)"
+  Eg: (gc :.flex :.scrollbars)"
   [& k]
   {:classes (mapv css k)})
 
 (defn component-class [class k]
-  (str "." (some-> class css/get-classnames (get-css k))))
+  (some-> class css/get-classnames (get-css k)))
 
 (defn ccss [component & k]
   (if-let [css-map (try
-                     (some-> component (gobj/get "constructor") css/get-classnames)
+                     (some-> component fc/react-type css/get-classnames)
                      (catch :default _ nil))]
     (into [] (map (partial get-css css-map)) k)
     []))

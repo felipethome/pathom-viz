@@ -76,7 +76,8 @@ function layoutTrace (node, {xScale, yScale, barSize}) {
   };
 
   const pos = {y: node.y1 + 1};
-  node.children.forEach(n => positionNode(n, pos));
+  if (node.children)
+    node.children.forEach(n => positionNode(n, pos));
 
   return node;
 }
@@ -104,6 +105,14 @@ function eventsOnMouse({xScale}, d, target) {
 
     return true;
   })
+}
+
+function fixedNumber(n, x) {
+  if (typeof n === "number") {
+    return n.toFixed(x);
+  } else {
+    return n
+  }
 }
 
 function renderTrace(selection, settings) {
@@ -142,7 +151,7 @@ function renderTrace(selection, settings) {
         delete d.y1
 
         return d
-      }));
+      }), d.data);
     })
 
   nodes
@@ -164,13 +173,13 @@ function renderTrace(selection, settings) {
     const label = d.data.name || d.data.hint;
     const details = eventsOnMouse(settings, d, target)
     const detailsTimes = details.map(d => {
-      return (d.duration ? d.duration + ' ms ' : '') + '<strong>' + d.event + '</strong>' + (d.label ? ' ' + d.label : '')
+      return (d.duration ? fixedNumber(d.duration, 3) + ' ms ' : '') + '<strong>' + d.event + '</strong>' + (d.label ? ' ' + d.label : '')
     })
 
     const detailsCount = ' <span class="pathom-details-count">' + d.data.details.length + '</span>'
     const childCount = d.data.children ? ' <span class="pathom-children-count">' + d.data.children.length + '</span>' : '';
 
-    return [d.data.duration + ' ms <strong>' + label + '</strong>' + detailsCount + childCount].concat(detailsTimes).join("<br>");
+    return [fixedNumber(d.data.duration, 3) + ' ms <strong>' + label + '</strong>' + detailsCount + childCount].concat(detailsTimes).join("<br>");
   });
 
   const boundNodes = nodesEnter.append('rect')
@@ -256,9 +265,19 @@ function renderTrace(selection, settings) {
     .attr('class', 'pathom-label-text')
     .attr('dx', 2)
     .attr('dy', 13)
-    .text(function (d) {
-      if (d.data.name) return d.data.name;
+    .html(function (d) {
+      if (d.data.name) return createNameHtml(d.data.name);
     })
+}
+
+function createNameHtml (name) {
+  const matches = name.match(/^[^:]([^/]+\/)(.+)/)
+
+  if (matches) {
+    return "<tspan class='pathom-label-text-fade'>" + matches[1] + "</tspan>" + matches[2];
+  } else {
+    return name;
+  }
 }
 
 const traceDefaults = {
